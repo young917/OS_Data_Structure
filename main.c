@@ -13,11 +13,21 @@
 #define DUMP 2
 #define OTHERS 3
 
+// LIST
 void list_swap(struct list_elem *a, struct list_elem *b);
 void list_shuffle(struct list *list);
+
+// HASH
 unsigned hash_int_2(int i);
+unsigned hash_hash_function( const struct hash_elem *e, void *aux );
+bool hash_less_function( const struct hash_elem *a, const struct hash_elem *b, void *aux );
+void hash_action_on_element( struct hash_elem *e, void *aux );
+void hash_action_destructor( struct hash_elem *e, void *aux );
+
+// BITMAP
 struct bitmap *bitmap_expand(struct bitmap *bitmap, int size);
 
+// MAIN
 bool execute(char *);
 void create(char *);
 void delete(char *);
@@ -27,12 +37,16 @@ void bitmap_handler(char *, int flag);
 void hash_handler(char *, int flag);
 int str2int(char *);
 
+char *param[6];
 struct list *L[10];
+struct hash *H[10];
+struct hash_iterator *Hash_Iterator;
 
 int main (void){
 
 	char command[100];
 	bool exit = false;
+	Hash_Iterator = (struct hash_iterator *)malloc(sizeof( struct hash_iterator));
 
 	while(!exit){
 		fgets(command, sizeof(command), stdin);
@@ -70,8 +84,9 @@ bool execute(char *command){
 	}
 	else if( !strncmp( command, "hash", 4) ){
 		command += 5;
-		//hash_handler(command);
+		hash_handler(command, OTHERS);
 	}
+
 	return exit;
 }
 
@@ -81,6 +96,11 @@ void create(char *command){
 	if( !strncmp( command, "list", 4) ){
 		list_handler( command + 9, CREATE );
 	}
+
+	//create hashtable
+	else if( !strncmp( command, "hashtable", 9) ){
+		hash_handler( command + 14, CREATE );
+	}
 }
 
 void delete(char *command){
@@ -89,6 +109,12 @@ void delete(char *command){
 	if( !strncmp( command, "list", 4) ){
 		list_handler( command + 4, DELETE );
 	}
+
+	//delete hashtable
+	else if( !strncmp( command, "hash", 4) ){
+		hash_handler( command + 4, DELETE );
+	}
+
 }	
 
 void dumpdata( char *command ){
@@ -97,11 +123,23 @@ void dumpdata( char *command ){
 	if( !strncmp( command, "list", 4) ){
 		list_handler( command + 4, DUMP );
 	}
+
+	//dump hashtable
+	else if( !strncmp( command, "hash", 4) ){
+		hash_handler( command + 4, DUMP );
+	}
+
 }
 
 int str2int(char *str){
 	int ret = 0;
 	int idx = 0;
+	bool neg = false;
+	
+	if(str[idx] == '-'){
+		neg = true;
+		idx++;
+	}
 
 	while(1){
 		if(str[idx] == '\0' || str[idx] == '\n'){
@@ -111,6 +149,11 @@ int str2int(char *str){
 		ret += ( str[idx] - '0' );
 		idx++;
 	}
+
+	if(neg){
+		ret *= (-1);
+	}
+
 	return ret;
 }
 
@@ -158,7 +201,6 @@ void list_handler(char *command, int flag){
 	int idx;
 	int i;
 	struct list_elem *cur, *next;
-	char *param[6];
 
 	// split command
 	param[0] = strtok( command, " ");
@@ -325,11 +367,9 @@ void list_handler(char *command, int flag){
 				}
 			}
 			list_remove(cur);
-			/*
 			struct list_item *ditem = list_entry( cur, struct list_item, elem);
 			free(ditem);
 			ditem = NULL;
-			*/
 		}
 
 		else if( !strncmp( param[0], "sort", 4)){
@@ -420,3 +460,260 @@ void list_handler(char *command, int flag){
 
 	return;
 }
+
+unsigned hash_int_2(int i){
+}
+
+unsigned hash_hash_function( const struct hash_elem *e, void *aux ){
+	struct hash_item *hitem = hash_entry( e, struct hash_item, elem);
+	int val = hitem->data;
+	return hash_int(val);
+}
+
+bool hash_less_function( const struct hash_elem *a, const struct hash_elem *b, void *aux ){
+	struct hash_item *aitem = hash_entry( a, struct hash_item, elem);
+	int aval = aitem->data;
+
+	struct hash_item *bitem = hash_entry( b, struct hash_item, elem);
+	int bval = bitem->data;
+
+	return (aval < bval);
+}
+
+#define SQUARE 0
+#define TRIPLE 1
+void hash_action_on_element( struct hash_elem *e, void *aux ){
+	int flag = *(int *)aux;
+
+	struct hash_item *hitem = hash_entry( e, struct hash_item, elem);
+	int val = hitem->data;
+
+	switch(flag){
+		case SQUARE:
+			{
+				hitem->data = val * val;
+				break;
+			}
+		case TRIPLE:
+			{
+				hitem->data = val * val * val;
+				break;
+			}
+	}
+}
+
+void hash_action_destructor( struct hash_elem *e, void *aux ){
+
+	struct hash_item *hitem = hash_entry( e, struct hash_item, elem);
+	free( hitem );
+	hitem = NULL;
+
+}
+
+void hash_handler( char *command, int flag){
+	int idx;
+
+	// split command
+	param[0] = strtok( command, " ");
+		
+	int i = 1;
+	while(1){
+		param[i] = strtok( NULL, " ");
+		if( param[i] == NULL )
+			break;
+		i++;
+	}
+
+
+	switch(flag){
+		case CREATE:{
+						idx = command[0] - '0';
+						H[idx] = (struct hash*)malloc(sizeof(struct hash));
+						void *aux;
+						hash_init( H[idx], hash_hash_function, hash_less_function, aux);
+						break;
+					}
+		case DELETE:{
+						idx = command[0] - '0';
+						hash_destroy( H[idx], hash_action_destructor);
+						break;
+					}
+		case DUMP:{
+					  idx = command[0] - '0';
+					  hash_first( Hash_Iterator, H[idx] );
+					  struct hash_elem *cur;
+
+					  while(1){
+						  cur = hash_next( Hash_Iterator );
+						  if( cur == NULL ){
+							  break;
+						  }
+						  struct hash_item *hitem = hash_entry( cur, struct hash_item, elem);
+						  int val = hitem->data;
+						  printf("%d ", val);
+					  }
+					  printf("\n");
+				  }
+	}
+
+	if(flag == OTHERS){
+		idx = param[1][4] - '0';
+		
+		if( !strncmp( param[0], "insert", 6) ){
+			// hash_insert hash0 -1: not duplicate
+			int val = str2int(param[2]);			
+			struct hash_item *new_item = (struct hash_item *)malloc( sizeof( struct hash_item) );
+			new_item->data = val;
+			hash_insert( H[idx], &(new_item->elem));
+		}
+
+		else if( !strncmp( param[0], "apply", 5) ){
+			// hash_apply hash0 square,triple: elements become square, triple
+			void *aux;
+			int flag;
+
+			if( !strncmp( param[2], "square", 6)){
+				flag = SQUARE;
+			}
+			else if( !strncmp( param[2], "triple", 6)){
+				flag = TRIPLE;
+			}
+			
+			aux = &flag;
+			H[idx]->aux = aux;
+			hash_apply( H[idx], hash_action_on_element);
+		}
+
+		else if( !strncmp( param[0], "delete", 6) ){
+			// hash_delete hash0 10: delete element whose value is 10
+			int target = str2int(param[2]);
+
+			struct hash_item *new_item = (struct hash_item *)malloc( sizeof( struct hash_item) );
+			new_item->data = target;
+			hash_delete( H[idx], &(new_item->elem));
+			free(new_item);
+			new_item = NULL;
+		}
+
+		else if( !strncmp( param[0], "empty", 5) ){
+			// hash_empty hash0: print true/false
+			if( hash_empty( H[idx] ) ){
+				printf("true\n");
+			}
+			else{
+				printf("false\n");
+			}
+		}
+
+		else if( !strncmp( param[0], "size", 4) ){
+			// hash_size hash0: print hash element number
+			printf("%d\n", (int)hash_size( H[idx]));
+		}
+
+		else if( !strncmp( param[0], "clear", 5 ) ){
+			// hash_clear hash0
+			hash_clear( H[idx], hash_action_destructor );
+		}
+
+		else if( !strncmp( param[0], "find", 4) ){
+			// hash_find hash0 10: if find, print value(10)/ else, print nothing
+			int target = str2int(param[2]);
+			struct hash_elem *found;
+
+			struct hash_item *new_item = (struct hash_item *)malloc( sizeof( struct hash_item) );
+			new_item->data = target;
+			found = hash_find( H[idx], &(new_item->elem));
+			
+			if( found != NULL ){
+				printf("%d\n", target);
+			}
+		}
+
+		else if( !strncmp( param[0], "replace", 7) ){
+			// hash_replace hash0 10: what difference between insert?
+			int val = str2int( param[2] );
+			struct hash_item *new_item = (struct hash_item *)malloc( sizeof( struct hash_item) );
+			new_item->data = val;
+
+			hash_replace( H[idx], &(new_item->elem) );
+		}
+
+	}
+}
+
+/*
+			hash_first( Hash_Iterator, H[idx] );
+			struct hash_elem *cur;
+
+			while(1){
+				cur = hash_next( Hash_Iterator );
+				if( cur == NULL ){
+					break;
+				}
+				struct hash_item *hitem = hash_entry( cur, struct hash_item, elem);
+				int val = hitem->data;
+				if( val == target ){
+					break;
+				}
+			}
+
+			if( cur != NULL ){
+				printf("%d\n", target);
+			}
+
+   */
+
+/*
+void bitmap_handler( char *command, int flag){
+	int idx;
+	int i;
+	struct list_elem *cur, *next;
+	char *param[6];
+
+	// split command
+	param[0] = strtok( command, " ");
+		
+	i = 1;
+	while(1){
+		param[i] = strtok( NULL, " ");
+		if( param[i] == NULL )
+			break;
+		i++;
+	}
+
+
+	switch(flag){
+		case CREATE:{
+						idx = command[0] - '0';
+						L[idx] = (struct list*)malloc(sizeof(struct list));
+						list_init(L[idx]);
+						break;
+					}
+		case DELETE:{
+						idx = command[0] - '0';
+						for( cur = list_begin(L[idx]) ; cur != list_end(L[idx]) ; cur = next){
+							next = list_next(cur);
+							struct list_item *ditem = list_entry( cur, struct list_item, elem);
+							free(ditem);
+							ditem = NULL;
+						}
+						free( L[idx] );
+						L[idx] = NULL;
+						break;
+					}
+		case DUMP:{
+					  idx = command[0] - '0';
+					  for( cur = list_begin(L[idx]) ; cur != list_end( L[idx] ); cur = list_next(cur)){
+						  struct list_item *temp = list_entry( cur, struct list_item, elem);
+						  int temp_data = temp->data;
+						  printf("%d ",temp_data);
+					  }
+					  printf("\n");
+				  }
+	}
+
+	if(flag == OTHERS){
+		idx = param[1][4] - '0';
+	}
+}
+*/
