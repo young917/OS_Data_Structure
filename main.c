@@ -1,6 +1,7 @@
 #include "list.h"
 #include "hash.h"
 #include "bitmap.h"
+#include "bitmap.c"
 #include "debug.h"
 #include "limits.h"
 #include "round.h"
@@ -25,7 +26,7 @@ void hash_action_on_element( struct hash_elem *e, void *aux );
 void hash_action_destructor( struct hash_elem *e, void *aux );
 
 // BITMAP
-struct bitmap *bitmap_expand(struct bitmap *bitmap, int size);
+struct bitmap *bitmap_expand(struct bitmap *b, int size);
 
 // MAIN
 bool execute(char *);
@@ -41,6 +42,7 @@ char *param[6];
 struct list *L[10];
 struct hash *H[10];
 struct hash_iterator *Hash_Iterator;
+struct bitmap *B[10];
 
 int main (void){
 
@@ -80,7 +82,7 @@ bool execute(char *command){
 	}
 	else if( !strncmp( command, "bitmap", 6) ){
 		command += 7;
-		//bitmap_handler(command);
+		bitmap_handler(command, OTHERS);
 	}
 	else if( !strncmp( command, "hash", 4) ){
 		command += 5;
@@ -101,6 +103,11 @@ void create(char *command){
 	else if( !strncmp( command, "hashtable", 9) ){
 		hash_handler( command + 14, CREATE );
 	}
+
+	//create bitmap
+	else if( !strncmp( command, "bitmap", 6)){
+		bitmap_handler( command + 7, CREATE);
+	}
 }
 
 void delete(char *command){
@@ -115,6 +122,11 @@ void delete(char *command){
 		hash_handler( command + 4, DELETE );
 	}
 
+	//delete bitmap
+	else if( !strncmp( command, "bm", 2 )){
+		bitmap_handler( command + 2, DELETE );
+	}
+
 }	
 
 void dumpdata( char *command ){
@@ -127,6 +139,11 @@ void dumpdata( char *command ){
 	//dump hashtable
 	else if( !strncmp( command, "hash", 4) ){
 		hash_handler( command + 4, DUMP );
+	}
+
+	//dump bitmap
+	else if( !strncmp( command, "bm", 2)){
+		bitmap_handler( command + 2, DUMP);
 	}
 
 }
@@ -462,6 +479,7 @@ void list_handler(char *command, int flag){
 }
 
 unsigned hash_int_2(int i){
+
 }
 
 unsigned hash_hash_function( const struct hash_elem *e, void *aux ){
@@ -641,34 +659,16 @@ void hash_handler( char *command, int flag){
 	}
 }
 
-/*
-			hash_first( Hash_Iterator, H[idx] );
-			struct hash_elem *cur;
+struct bitmap *bitmap_expand(struct bitmap *b, int size){
+	int orgsize = bitmap_size( b );
+	b->bit_cnt = orgsize + size;
+	b->bits = (elem_type *)realloc( b->bits, (orgsize + size) * sizeof(elem_type));
+	bitmap_set_multiple( b, orgsize, size, false);
+}
 
-			while(1){
-				cur = hash_next( Hash_Iterator );
-				if( cur == NULL ){
-					break;
-				}
-				struct hash_item *hitem = hash_entry( cur, struct hash_item, elem);
-				int val = hitem->data;
-				if( val == target ){
-					break;
-				}
-			}
-
-			if( cur != NULL ){
-				printf("%d\n", target);
-			}
-
-   */
-
-/*
 void bitmap_handler( char *command, int flag){
 	int idx;
 	int i;
-	struct list_elem *cur, *next;
-	char *param[6];
 
 	// split command
 	param[0] = strtok( command, " ");
@@ -684,36 +684,210 @@ void bitmap_handler( char *command, int flag){
 
 	switch(flag){
 		case CREATE:{
-						idx = command[0] - '0';
-						L[idx] = (struct list*)malloc(sizeof(struct list));
-						list_init(L[idx]);
+						// create bitmap bm0 16
+						idx = param[0][2] - '0';
+						int bsize = str2int( param[1] );
+						B[idx] = bitmap_create( bsize );
 						break;
 					}
 		case DELETE:{
 						idx = command[0] - '0';
-						for( cur = list_begin(L[idx]) ; cur != list_end(L[idx]) ; cur = next){
-							next = list_next(cur);
-							struct list_item *ditem = list_entry( cur, struct list_item, elem);
-							free(ditem);
-							ditem = NULL;
-						}
-						free( L[idx] );
-						L[idx] = NULL;
+						bitmap_destroy( B[idx] );
 						break;
 					}
 		case DUMP:{
 					  idx = command[0] - '0';
-					  for( cur = list_begin(L[idx]) ; cur != list_end( L[idx] ); cur = list_next(cur)){
-						  struct list_item *temp = list_entry( cur, struct list_item, elem);
-						  int temp_data = temp->data;
-						  printf("%d ",temp_data);
+					  int bsize = (int)( bitmap_size( B[idx] ));
+
+					  for( i = 0; i < bsize ; i++ ){
+						  printf("%d",(int)(bitmap_test(B[idx], i)));
 					  }
 					  printf("\n");
 				  }
 	}
 
 	if(flag == OTHERS){
-		idx = param[1][4] - '0';
+		idx = param[1][2] - '0';
+
+		int index1, num;
+
+		if( !strncmp( param[0], "mark", 4)) {
+			// bitmap_mark bm0 0: [0] <- 1
+			index1 = str2int( param[2] );
+			bitmap_mark( B[idx], index1 );
+		}
+
+		else if( !strncmp( param[0], "all", 3) ){
+			// bitmap_all bm0 0 1: [0] - [0 + 1 - 1] all set true? => print true/false
+			index1 = str2int( param[2] );
+			num = str2int( param[3] );
+			if( bitmap_all( B[idx],index1, num ) ){
+				printf("true\n");
+			}
+			else{
+				printf("false\n");
+			}
+		}
+
+		else if( !strncmp( param[0], "any", 3) ){
+			// bitmap_any bm0 0 1: [0] - [0 + 1 - 1] any set true? => print true/false
+			index1 = str2int( param[2] );
+			num = str2int( param[3] );
+			if( bitmap_any( B[idx], index1, num) ){
+				printf("true\n");
+			}
+			else{
+				printf("false\n");
+			}
+		}
+		
+		else if( !strncmp( param[0], "contains", 8) ){
+			// bitmap_contains bm0 0 2 true: [0] - [0 + 2 - 1] contain true? => print true/ false
+			index1 = str2int( param[2] );
+			num = str2int( param[3] );
+			bool val = false;
+			if( !strncmp( param[4], "true", 4 ) ){
+				val = true;
+			}
+			
+			if( bitmap_contains( B[idx], index1, num, val ) ){
+				printf("true\n");
+			}
+			else{
+				printf("false\n");
+			}
+
+		}
+
+		else if( !strncmp( param[0], "count", 5 )){
+			// bitmap_count bm0 0 8 true: [0] - [0 + 8 - 1] how many true?
+			index1 = str2int( param[2] );
+			num = str2int( param[3] );
+			bool val = false;
+			if( !strncmp( param[4], "true", 4 )){
+				val = true;
+			}
+
+			printf( "%d\n", (int)bitmap_count( B[idx], index1, num, val));
+		}
+
+		else if( !strncmp( param[0], "dump", 4 )){
+			// bitmap_dump bm0
+			bitmap_dump( B[idx] );
+		}
+
+		else if( !strncmp( param[0], "expand", 6 )){
+			// bitmap_expand bm0 4
+			num = str2int( param[2] );
+			bitmap_expand( B[idx], num);
+		}
+		
+		else if( !strncmp( param[0], "set_multiple", 12 )){
+			// bitmap_set_multiple bm0 0 4 true
+			index1 = str2int( param[2] );
+			num = str2int( param[3] );
+			bool val = false;
+			if( !strncmp( param[4], "true", 4 )){
+				val = true;
+			}
+			bitmap_set_multiple( B[idx], index1, num, val);
+		}
+
+		else if( !strncmp( param[0], "set_all", 7 )){
+			// bitmap_set_all bm0 false
+			bool val = false;
+			if( !strncmp( param[2], "true", 4 )){
+				val = true;
+			}
+			bitmap_set_all( B[idx], val);
+		}
+
+		else if( !strncmp( param[0], "set", 3 )){
+			// bitmap_set bm0 0 true
+			index1 = str2int( param[2] );
+			bool val = false;
+			if( !strncmp( param[3], "true", 4 )){
+				val = true;
+			}
+			
+			bitmap_set( B[idx], index1, val);
+		}
+
+		
+		else if( !strncmp( param[0], "flip", 4 )){
+			// bitmap_flip bm0 4
+			index1 = str2int( param[2] );
+			bitmap_flip( B[idx], index1 );
+		}
+
+		else if( !strncmp( param[0], "none", 4 )){
+			// bitmap_none bm0 0 1
+			index1 = str2int( param[2] );
+			num = str2int( param[3] );
+			if( bitmap_none( B[idx], index1, num )){
+				printf("true\n");
+			}
+			else{
+				printf("false\n");
+			}
+		}
+		
+		else if( !strncmp( param[0], "reset", 5 )){
+			//bitmap_reset bm0 0
+			num = str2int( param[2] );
+			bitmap_reset( B[idx], num);
+		}
+		
+		else if( !strncmp( param[0], "scan_and_flip", 13 )){
+			//bitmap_scan_and_flip bm0 0 1 true
+			index1 = str2int( param[2] );
+			num = str2int( param[3] );
+			bool val = false;
+			if( !strncmp( param[4], "true", 4 )){
+				val = true;
+			}
+			
+			size_t ret = bitmap_scan_and_flip( B[idx], index1, num, val);
+			if( ret == BITMAP_ERROR ){
+				printf("4294967295\n");
+			}
+			else{
+				printf("%d\n",(int)ret);
+			}
+		}
+
+		else if( !strncmp( param[0], "scan", 4 )){
+			//bitmap_scan bm0 0 1 true
+			index1 = str2int( param[2] );
+			num = str2int( param[3] );
+			bool val = false;
+			if( !strncmp( param[4], "true", 4 )){
+				val = true;
+			}
+			size_t ret = bitmap_scan(B[idx], index1, num, val);
+			if( ret == BITMAP_ERROR ){
+				printf("4294967295\n");
+			}
+			else{
+				printf("%d\n",(int)ret);
+			}
+
+		}
+
+		else if( !strncmp( param[0], "size", 4 )){
+			// bitamp_size bm0
+			printf("%d\n", (int)(bitmap_size(B[idx])));
+		}
+		
+		else if( !strncmp( param[0], "test", 4 )){
+			// bitmap_test bm0 4
+			index1 = str2int(param[2]);
+			if( bitmap_test(B[idx], index1) ){
+				printf("true\n");
+			}
+			else{
+				printf("false\n");
+			}
+		}
 	}
 }
-*/
