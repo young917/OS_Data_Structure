@@ -478,8 +478,21 @@ void list_handler(char *command, int flag){
 	return;
 }
 
-unsigned hash_int_2(int i){
+#define FNV_32_PRIME 16777619u
+#define FNV_32_BASIS 2166136261u
 
+unsigned hash_int_2(int i){
+	
+	unsigned hash = FNV_32_BASIS;
+
+	while(i>0){
+		if(i%2 == 1){
+			hash = hash ^ FNV_32_PRIME;
+		}
+		i/=2;
+	}
+
+	return hash;
 }
 
 unsigned hash_hash_function( const struct hash_elem *e, void *aux ){
@@ -664,6 +677,7 @@ struct bitmap *bitmap_expand(struct bitmap *b, int size){
 	b->bit_cnt = orgsize + size;
 	b->bits = (elem_type *)realloc( b->bits, (orgsize + size) * sizeof(elem_type));
 	bitmap_set_multiple( b, orgsize, size, false);
+	return b;
 }
 
 void bitmap_handler( char *command, int flag){
